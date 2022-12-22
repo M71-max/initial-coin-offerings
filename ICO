@@ -1,0 +1,131 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+import "./ERC20.sol";
+
+import "hardhat/console.sol";
+
+contract ICO is ERC20 {
+
+    uint internal startTime;
+    uint internal endTime;
+    bool internal endSale;
+    mapping(address => uint) internal balance;
+    uint internal immutable TARGET_GOAL_PERCENTAGE;
+    bool private locked;
+
+    constructor(uint saleTime, uint target , uint totalPublished, string memory tname, string memory tsymbol) ERC20(tname, tsymbol, totalPublished) {
+        startTime = block.timestamp;
+        endTime = startTime + saleTime;
+        TARGET_GOAL_PERCENTAGE = target;
+        endSale = false;
+    }
+
+    fallback() external  payable {
+
+    }
+
+    receive() external  payable {
+        
+    }
+
+    modifier checkSaleEnded() {
+        require(!endSale, "Sale Ended");
+        _;
+    }
+
+    modifier checkEndTime() {
+        require(endTime >= block.timestamp, "Sale of tokens ended!");
+        require(!endSale, "Sale ended by the owner!");
+        _;
+    }
+
+    function endSaleByForce() external isOwner checkSaleEnded {
+        endSale = true;
+    }
+
+    modifier underLimit(uint amount) {
+        require((totalSupply + amount) <= totalSupplyLimit, "Limit reached!");
+        _;
+    }
+
+    modifier checkGoal() {
+        require(totalSupply >= TARGET_GOAL_PERCENTAGE, "Desired goal not reached.");
+        _;
+    }
+
+    modifier transferEndTime() {
+        require(!locked, "No re-entrancy");
+        require(endTime < block.timestamp, "Sale of tokens ended! Unable to transfer.");
+        locked = true;
+        _;
+        locked = false;
+    }
+
+    modifier customerWithdraw() {
+         require(totalSupply < TARGET_GOAL_PERCENTAGE, "Desired goal not reached.");
+        _;
+    }
+
+    function buyTokens() external payable checkEndTime {
+        uint _balance = (msg.value / 1e15);
+        transferToRequest(_balance);
+
+        // console.log(_balance);
+        // require(((_balance * 1000) + totalSupply) <= totalSupplyLimit, "Limit Reached!");
+        // balance[msg.sender] += _balance * 1000;
+        // totalSupply += _balance * 1000;
+    }
+
+    function getCurrBalance() external view returns (uint) {
+        return getBalance();
+    }
+
+    function transferByOwner(address to, uint amount) external isOwner isNull(to) underLimit(amount) {
+        ownerTransfer(to, amount);
+    }
+
+    // function transfer(address to, uint amount) external isNull(to) {
+    //     require(condition);
+    // }
+
+    function getTimeLine() external view returns (uint saleStartTime, uint saleEndTime, uint nowTime) {
+        saleStartTime = startTime;
+        saleEndTime = endTime;
+        nowTime = block.timestamp;
+    }
+
+    function getTotalTokens() external view returns (uint) {
+        return totalSupplyLimit;
+    }
+
+    function getCurrentTokens() external view returns (uint) {
+        return totalSupply;
+    }
+
+    function withdraw(uint amount) external customerWithdraw {
+        assert(msg.sender != owner);
+        assert(endTime < block.timestamp);
+        address requester = msg.sender;
+        require(balanceOf[requester] > 0);
+        uint _balance = balance[requester];
+        assert(_balance >= amount);
+        balanceOf[requester] -= amount;
+        _balance /= 10;
+        (bool success, ) = msg.sender.call{value: amount}("");
+        require(success, "Withdraw of funds failed!");
+    }
+
+    function transfer_To(address to, uint amount) external transferEndTime {
+        tranferTo(to, amount);
+    }
+
+    function ownerWithdraw(uint amount) external checkGoal {
+        assert(msg.sender == owner);
+        assert(endTime < block.timestamp);
+        (bool success, ) = msg.sender.call{value: amount}("");
+        require(success, "Withdraw of funds failed!");
+    }
+
+}
+
